@@ -29,15 +29,15 @@
         "-b",
         "nucleo_wl55jc",
 
-        "C:/Users/frank/Downloads/blink_basic",
+        "C:/Users/frank/Desktop/hands_on_lab",
 
         "-d",
         
-        "C:/Users/frank/Downloads/blink_basic/build",
+        "C:/Users/frank/Desktop/hands_on_lab/build",
         
         "-DZephyr-sdk_DIR=C:/Asignaturas/EMB_PLA_COM/zephyr-sdk-1.0.1/cmake",
 
-        "-DUSER_CACHE_DIR=C:/Users/frank/Downloads/blink_basic/.zephyr-cache",
+        "-DUSER_CACHE_DIR=C:/Users/frank/Desktop/hands_on_lab/.zephyr-cache",
 
         "-DDTC_OVERLAY_FILE='./boards/nucleo_wl55jc.overlay'",
 
@@ -75,7 +75,7 @@
         "reset=HWrst",
 
         "--download",
-        "C:\\Users\\frank\\Downloads\\blink_basic\\build\\zephyr\\zephyr.hex",
+        "C:\\Users\\frank\\Desktop\\hands_on_lab\\build\\zephyr\\zephyr.hex",
 
         "--start"
       ],
@@ -198,7 +198,7 @@
   "args": [
     "debugserver",
     "-d",
-    "C:/Users/frank/Downloads/blink_basic/build"
+    "C:/Users/frank/Desktop/hands_on_lab/build"
   ],
 
   "options": {

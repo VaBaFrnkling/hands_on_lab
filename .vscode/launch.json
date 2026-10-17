@@ -9,10 +9,10 @@
       "request": "launch",
 
       "cwd":
-        "C:/Users/frank/Downloads/blink_basic",
+        "C:/Users/frank/Desktop/hands_on_lab",
 
       "executable":
-        "C:/Users/frank/Downloads/blink_basic/build/zephyr/zephyr.elf",
+        "C:/Users/frank/Desktop/hands_on_lab/build/zephyr/zephyr.elf",
 
       "servertype": "external",
       "gdbTarget": "localhost:3333",
