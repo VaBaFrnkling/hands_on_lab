@@ -3,6 +3,7 @@
 #include <zephyr/drivers/adc.h>
 
 #include "adc_thread.h"
+#include "shared.h"
 
 // ADC node definition
 #define ADC_NODE DT_ALIAS(analog_in_pin)
@@ -19,7 +20,7 @@ static const struct adc_dt_spec adc_ch = ADC_DT_SPEC_GET(ADC_NODE);
  * Returns 0 on success, or a negative error code if the ADC is not ready or
  * if the channel setup fails.
  */
-static int adc_init(void)
+int adc_init(void)
 {
     if (!adc_is_ready_dt(&adc_ch))
         return -1;
@@ -38,7 +39,7 @@ static int adc_init(void)
  * adc_get_sample: Reads a sample_raw from the ADC channel and returns the value.
  * Returns the sample_raw value on success, or a negative error code if the read fails. 
  */
-static int adc_get_sample(void)
+int adc_get_sample(void)
 {
     int ret = adc_read_dt(&adc_ch, &sequence);
     if (ret < 0)
@@ -52,7 +53,7 @@ static int adc_get_sample(void)
  * acquires samples from the ADC, and sends them to the sample queue for processing by the LED thread. 
  * It handles mode changes and ensures that samples are only acquired in the correct mode.
  */
-static void adc_thread(void *a, void *b, void *c)
+void adc_thread(void *a, void *b, void *c)
 {
     (void)a;
     (void)b;
