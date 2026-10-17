@@ -26,4 +26,6 @@ extern struct k_mutex system_state_lock;
 // Shared variable for the current mode generation
 extern uint32_t mode_generation;
 
+void system_set_mode(system_mode_t mode);
+
 #endif
