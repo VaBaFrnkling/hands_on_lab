@@ -46,3 +46,100 @@ static int adc_get_sample(void)
 
     return sample_raw;
 }
+
+/**
+ * adc_thread: Sends raw samples to the LED thread only in MODE_NORMAL.
+ * Blocks on signal_adc outside NORMAL and samples immediately on entry.
+ * Waits two seconds between acquisitions; a mode change interrupts that wait.
+ * Discards acquisitions spanning a mode change before publishing them.
+ */
+static void adc_thread(void *a, void *b, void *c)
+{
+    (void)a;
+    (void)b;
+    (void)c;
+
+    int ret = adc_init();
+
+    if (ret < 0)
+    {
+        printk("Error to initialize ADC: %d\n", ret);
+        return;
+    }
+
+    bool sample_now = true;
+
+    while (1)
+    {
+        if (atomic_get(&current_mode) != MODE_NORMAL)
+        {
+            printk("ADC thread waiting for MODE_NORMAL\n");
+            k_sem_take(&signal_adc, K_FOREVER);
+            printk("ADC thread resuming in MODE_NORMAL\n");
+            sample_now = true;
+            continue;
+        }
+
+        if (!sample_now)
+        {
+            printk("ADC thread waiting for next sample acquisition\n");
+            ret = k_sem_take(&signal_adc, K_SECONDS(2));
+            if (ret == 0)
+            {
+                printk("ADC thread resuming for immediate sample acquisition\n");
+                sample_now = true;
+                continue;
+            }
+            if (ret != -EAGAIN)
+            {
+                printk("Error waiting for semaphore: %d\n", ret);
+                continue;
+            }
+        }
+        sample_now = false;
+
+        k_mutex_lock(&system_state_lock, K_FOREVER);
+        if (atomic_get(&current_mode) != MODE_NORMAL)
+        {
+            printk("ADC thread detected mode change before acquisition\n");
+            k_mutex_unlock(&system_state_lock);
+            continue;
+        }
+        // Capture the current mode generation to detect changes during acquisition
+        uint32_t acquisition_generation = mode_generation;
+        printk("ADC thread acquiring sample in generation %u\n", acquisition_generation);
+        k_sem_take(&signal_adc, K_NO_WAIT);
+        k_mutex_unlock(&system_state_lock);
+
+        int value = adc_get_sample();
+        printk("ADC thread acquired sample: %d\n", value);
+
+        if (value < 0)
+        {
+            printk("Error reading ADC: %d\n", value);
+            continue;
+        }
+
+        k_mutex_lock(&system_state_lock, K_FOREVER);
+        if (atomic_get(&current_mode) != MODE_NORMAL ||
+            acquisition_generation != mode_generation)
+        {
+            k_mutex_unlock(&system_state_lock);
+            sample_now = true;
+            continue;
+        }
+        ret = k_msgq_put(&sample_q, &sample_raw, K_NO_WAIT);
+        k_mutex_unlock(&system_state_lock);
+
+        if (ret < 0)
+        {
+            printk("Error to send sample_raw to led_thread\n");
+            continue;
+        }
+        printk("ADC thread sent sample_raw to led_thread: %d\n", sample_raw);
+    }
+    printk("ADC thread exiting\n");
+}
+
+// Thread definition for the ADC thread
+K_THREAD_DEFINE(adc_thread_id, 1024, adc_thread, NULL, NULL, NULL, 5, 0, 0);
