@@ -48,10 +48,9 @@ static int adc_get_sample(void)
 }
 
 /**
- * adc_thread: Sends raw samples to the LED thread only in MODE_NORMAL.
- * Blocks on signal_adc outside NORMAL and samples immediately on entry.
- * Waits two seconds between acquisitions; a mode change interrupts that wait.
- * Discards acquisitions spanning a mode change before publishing them.
+ * adc_thread: Thread function for the ADC sampling. It waits for the system to be in MODE_NORMAL,
+ * acquires samples from the ADC, and sends them to the sample queue for processing by the LED thread. 
+ * It handles mode changes and ensures that samples are only acquired in the correct mode.
  */
 static void adc_thread(void *a, void *b, void *c)
 {
