@@ -2,7 +2,9 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/sys/printk.h>
 
+#include "button_isr.h"
 #include "led_thread.h"
+#include "shared.h"
 
 // Definition of the RGB LED pins
 static const struct gpio_dt_spec led_r = GPIO_DT_SPEC_GET(DT_NODELABEL(rgb_red), gpios);
@@ -74,3 +76,85 @@ void process_adc_raw_sample(int16_t raw_val)
     printk("NORMAL: ADC=%d/4095, brightness=%u%%, RGB=%s\n",
            (int)raw_val, (unsigned int)brightness_pct, color);
 }
+
+/**
+ * led_thread: Thread function that manages the RGB LED based on button events and ADC samples.
+ * Polls button events without blocking and processes ADC samples only in NORMAL.
+ * Sleeps 50 ms between iterations; stops if RGB initialization fails.
+ */
+void led_thread(void *p1, void *p2, void *p3)
+{
+    (void)p1;
+    (void)p2;
+    (void)p3;
+
+    int ret = rgb_init();
+    if (ret < 0)
+    {
+        printk("Error to initialize RGB: %d\n", ret);
+        return;
+    }
+
+    int16_t sample;
+    enum button_event evt;
+    printk("Mode: NORMAL; waiting for ADC on A0/PB1\n");
+
+    while (1)
+    {
+        // Poll one queued button event; BUTTON_NONE means no event is pending.
+        evt = button_wait_event(K_NO_WAIT);
+
+        // B. Update the current mode based on the button event
+        switch ((system_mode_t)atomic_get(&current_mode))
+        {
+
+        case MODE_NORMAL:
+            if (evt == BUTTON_SHORT)
+            {
+                system_set_mode(MODE_BLUE);
+                rgb_set(false, false, true); // Blue
+            }
+            else if (evt == BUTTON_LONG)
+            {
+                system_set_mode(MODE_OFF);
+                rgb_set(false, false, false); // Turn off the LED
+            }
+            break;
+
+        case MODE_BLUE:
+            if (evt == BUTTON_SHORT)
+            {
+                system_set_mode(MODE_NORMAL);
+                rgb_set(false, false, false); // Clear BLUE while awaiting a fresh sample.
+            }
+            else if (evt == BUTTON_LONG)
+            {
+                system_set_mode(MODE_OFF);
+                rgb_set(false, false, false); // Turn off the LED
+            }
+            break;
+
+        case MODE_OFF:
+            if (evt == BUTTON_SHORT)
+            {
+                system_set_mode(MODE_NORMAL);
+            }
+            // A long press in OFF leaves the mode unchanged.
+            break;
+        }
+        /* Process raw ADC samples only in NORMAL. */
+        if (atomic_get(&current_mode) == MODE_NORMAL)
+        {
+            // Consume one raw sample if the ADC has queued one.
+            if (k_msgq_get(&sample_q, &sample, K_NO_WAIT) == 0)
+            {
+                process_adc_raw_sample(sample);
+            }
+        }
+
+        k_msleep(50); // Yield between polls.
+    }
+}
+
+// Thread definition for the LED thread
+K_THREAD_DEFINE(led_thread_id, 1024, led_thread, NULL, NULL, NULL, 4, 0, 0);
