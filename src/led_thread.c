@@ -54,16 +54,19 @@ void process_adc_raw_sample(int16_t raw_val)
     if (raw_val > 4095)
         raw_val = 4095;
 
+    // Inverison of the ADC value to represent brightness (0 = dark, 4095 = bright)
+    int32_t brightness_raw = 4095 - raw_val;
+
     // Percentage of the 12-bit ADC range; this is not calibrated illuminance.
-    uint8_t brightness_pct = (uint8_t)((raw_val * 100) / 4095);
+    uint8_t brightness_pct = (uint8_t)((brightness_raw * 100) / 4095);
 
     const char *color;
-    if (raw_val * 100 < 33 * 4095)
+    if (brightness_raw * 100 < 33 * 4095)
     {
         rgb_set(true, false, false);
         color = "RED";
     }
-    else if (raw_val * 100 <= 66 * 4095)
+    else if (brightness_raw * 100 <= 66 * 4095)
     {
         rgb_set(true, true, false);
         color = "YELLOW";
