@@ -77,7 +77,7 @@ void process_adc_raw_sample(int16_t raw_val)
         color = "GREEN";
     }
     printk("NORMAL: ADC=%d/4095, brightness=%u%%, RGB=%s\n",
-           (int)raw_val, (unsigned int)brightness_pct, color);
+           (int)(4095-raw_val), (unsigned int)brightness_pct, color);
 }
 
 /**
