@@ -8,7 +8,7 @@
 
 This project is a concurrent embedded application built with **Zephyr RTOS** for the **NUCLEO-WL55JC** development board. It reads an analog light-sensor signal through the ADC and controls an RGB LED. A push button switches between three operating modes: `NORMAL`, `BLUE`, and `OFF`.
 
-The application demonstrates RTOS threads, GPIO interrupts, delayed work, message queues, semaphores, mutexes, atomic variables, and inter-thread communication.
+The application demonstrates RTOS threads, GPIO interrupts, work queues, delayed work, message queues, semaphores, mutexes, atomic variables, and inter-thread communication.
 
 ## Hardware
 
@@ -27,7 +27,7 @@ The source code is organized into separate modules:
 - `src/main.c` initializes the button interface and reports initialization errors.
 - `src/adc_thread.c` initializes the ADC and periodically samples the analog input while the system is in `NORMAL` mode.
 - `src/led_thread.c` initializes the RGB outputs, handles queued button events, and updates the LED based on the active mode and ADC readings.
-- `src/button_isr.c` configures the button GPIO interrupt, debounces input using delayed work, detects short and long presses, and places button events in a queue.
+- `src/button_isr.c` configures the button GPIO interrupt, processes button state changes using the system work queue, detects short and long presses, and places button events in a message queue. No additional software debounce delay is used because the board provides hardware debouncing.
 - `src/shared.c` defines the shared mode state and synchronization objects, and implements `system_set_mode()`.
 - `include/` contains the corresponding module interfaces and shared declarations.
 - `confs/prj_nucleo_wl55jc.conf` contains the project configuration for the target board.
@@ -37,8 +37,8 @@ The source code is organized into separate modules:
 | Mode | Behavior | Button action |
 |---|---|---|
 | `NORMAL` | ADC samples are processed and the RGB LED indicates the sample range: red below 33%, yellow from 33% through 66%, and green above 66% of the 12-bit ADC range. | Short press switches to `BLUE`; long press switches to `OFF`. |
-| `BLUE` | The RGB LED is set to blue and ADC samples are not processed by the LED thread. | Short press switches to `NORMAL`; long press switches to `OFF`. |
-| `OFF` | The RGB LED is turned off and ADC processing remains inactive. | Short press switches to `NORMAL`; long press leaves the mode unchanged. |
+| `BLUE` | The RGB LED is set to blue and ADC acquisition is suspended. | Short press switches to `NORMAL`; long press switches to `OFF`. |
+| `OFF` | The RGB LED is turned off and ADC acquisition is suspended. | Short press switches to `NORMAL`; long press leaves the mode unchanged. |
 
 The percentage shown in the serial output is calculated from the raw 12-bit ADC value. It is a percentage of the ADC range, **not a calibrated measurement of illuminance**.
 
@@ -67,19 +67,30 @@ In Zephyr, a numerically lower thread-priority value represents a higher priorit
 
 ### Button interrupt and work queue
 
-The GPIO interrupt is triggered on both edges of the button signal. It schedules delayed work rather than performing lengthy processing inside the ISR. A 15 ms debounce delay filters contact bounce; a second delayed-work item detects a long press at approximately one second. Accepted `BUTTON_SHORT` and `BUTTON_LONG` events are sent through a separate message queue for the LED thread to handle.
+The GPIO interrupt is triggered on both edges of the button signal. Since the NUCLEO-WL55JC board already provides hardware debouncing, no additional software debounce delay is implemented.
+
+Instead of performing lengthy processing inside the ISR, the interrupt submits a `k_work` item to the system work queue using `k_work_submit()`. The `button_handler()` function reads the GPIO state and determines whether the button has been pressed or released.
+
+A separate `k_work_delayable` item is used to detect long presses. When the button is pressed, the long-press work is scheduled to execute after one second. If the button remains pressed when the threshold is reached, a `BUTTON_LONG` event is generated without waiting for the button to be released.
+
+If the button is released before the long-press threshold, the pending work is canceled and a `BUTTON_SHORT` event is generated. The `long_press_detected` flag prevents a long press from generating an additional short-press event upon release.
+
+Accepted button events are transmitted through `button_event_q` to the LED thread for processing.
+
+**Implementation limitation:** `k_work_submit()` does not queue a separate execution for every GPIO edge. Very brief presses may be missed if the button is pressed and released before `button_handler()` reads the GPIO state. An ISR-side edge queue would be needed to preserve every transition reliably.
 
 ## Inter-thread communication and synchronization
 
 | Mechanism | Purpose |
 |---|---|
 | `sample_q` (`k_msgq`) | Transfers raw `int16_t` ADC samples from the ADC thread to the LED thread. The queue holds four samples. |
-| `button_event_q` (`k_msgq`) | Transfers button events from the delayed-work handlers to the LED thread. The queue holds eight events. |
+| `button_event_q` (`k_msgq`) | Transfers button events from the button work handlers to the LED thread. The queue holds eight events. |
 | `signal_adc` (`k_sem`) | Wakes the ADC thread when the operating mode changes and interrupts its timed wait. |
 | `system_state_lock` (`k_mutex`) | Protects mode transitions, sample publication, and the mode-generation counter. |
 | `current_mode` (atomic variable) | Stores the current operating mode for safe atomic reads and updates. |
 | `mode_generation` | Identifies mode transitions so an ADC acquisition spanning a transition cannot be published as a current sample. |
-| Delayed work (`k_work_delayable`) | Handles button debounce and long-press timing outside the GPIO ISR. |
+| `button_work` (`k_work`) | Processes button press and release state changes outside the GPIO ISR without an additional software debounce delay. |
+| `long_press_work` (`k_work_delayable`) | Schedules long-press detection after one second, allowing the event to be generated without waiting for button release. |
 
 When the mode changes, `system_set_mode()` locks the shared state, purges stale ADC samples, increments the generation counter, updates the atomic mode, and signals the ADC thread. This prevents queued samples from an earlier mode from being treated as current data.
 
@@ -132,6 +143,7 @@ The file `confs/prj_nucleo_wl55jc.conf` enables console and UART output, `printk
 6. Hold the button for about one second or longer and confirm that the mode changes to `OFF`.
 7. In `OFF`, use a short press to return to `NORMAL`.
 8. Check the console for ADC, GPIO, or queue-related errors.
+9. Verify that short and long presses are correctly detected without software debouncing and that releasing the button after a long press does not generate an additional short-press event.
 
 ## References
 
