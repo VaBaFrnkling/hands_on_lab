@@ -14,8 +14,8 @@ static struct gpio_callback button2_cb;
 // Both handlers run sequentially on the system work queue.
 static struct k_work_delayable long_press_work;
 
-// work delayable for the debounce
-static struct k_work_delayable debounce_work;
+// work for the button press/release events
+static struct k_work button_work;
 
 // Keep accepted events in order without blocking the system work queue.
 K_MSGQ_DEFINE(button_event_q, sizeof(enum button_event), 8, 1);
@@ -67,12 +67,14 @@ static void long_press_handler(struct k_work *work)
 }
 
 /**
- * debounce_handler: Handles button debounce by checking the button state after a short delay (15ms).
- * It determines whether the button was pressed or released and sets the appropriate event (short or long press) accordingly.
- * Events are queued for the LED thread.
+ * button_handler: Handles button state changes after debouncing. 
+ * It reads the current state of the button and determines whether 
+ * it was pressed or released. Based on the state, it schedules the 
+ * long press detection or sends a BUTTON_SHORT event if the button was 
+ * released before the long press duration. 
  * @param work: Pointer to the work structure associated with this handler.
  */
-static void debounce_handler(struct k_work *work)
+static void button_handler(struct k_work *work)
 {
     (void)work;
 
@@ -131,8 +133,8 @@ static void button_isr(const struct device *port,
     (void)cb;
     (void)pins;
 
-    // Schedule the debounce handler to run after 15ms to handle button state changes and determine the type of press (short or long).
-    k_work_reschedule(&debounce_work, K_MSEC(15));
+    // Submit the button work to the work queue
+    k_work_submit(&button_work);
 }
 
 /**
@@ -152,7 +154,7 @@ int button_init(void)
 
     // Prepare all resources before enabling the GPIO interrupt.
     k_work_init_delayable(&long_press_work, long_press_handler);
-    k_work_init_delayable(&debounce_work, debounce_handler);
+    k_work_init(&button_work, button_handler);
 
     // Configure the button callback and add it to the GPIO driver.
     gpio_init_callback(&button2_cb, button_isr, BIT(button2.pin));
