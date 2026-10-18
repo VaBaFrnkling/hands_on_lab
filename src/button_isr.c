@@ -52,15 +52,6 @@ static void long_press_handler(struct k_work *work)
 
     if (button_pressed && !long_press_detected)
     {
-        int64_t elapsed = k_uptime_get() - press_started_ms;
-
-        // A previously queued invocation must not classify a newer press early.
-        if (elapsed < 1000)
-        {
-            k_work_reschedule(&long_press_work, K_MSEC(1000 - elapsed));
-            return;
-        }
-
         long_press_detected = true;
         button_send_event(BUTTON_LONG);
     }
