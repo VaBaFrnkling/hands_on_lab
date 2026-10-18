@@ -42,9 +42,9 @@ static void button_send_event(enum button_event event)
 }
 
 /**
- * long_press_handler: Handles long press detection. It checks if the button is still pressed after a specified duration (1 second) and sends a BUTTON_LONG event if the condition is met.
- * This function is scheduled to run after the long press duration has elapsed.     
- * @param work: Pointer to the work structure associated with this handler.   
+ * long_press_handler: Handles the detection of a long button press.
+ * It checks if the button is still pressed after 1 second and sends a BUTTON_LONG event if so.
+ * @param work: Pointer to the work structure associated with this handler.
  */
 static void long_press_handler(struct k_work *work)
 {
@@ -67,12 +67,10 @@ static void long_press_handler(struct k_work *work)
 }
 
 /**
- * button_handler: Handles button state changes after debouncing. 
- * It reads the current state of the button and determines whether 
- * it was pressed or released. Based on the state, it schedules the 
- * long press detection or sends a BUTTON_SHORT event if the button was 
- * released before the long press duration. 
- * @param work: Pointer to the work structure associated with this handler.
+    * button_handler: Handles button press and release events. 
+    * It reads the button state, determines if it is a press or release, 
+    * and schedules the long press detection handler if necessary.
+    * @param work: Pointer to the work structure associated with this handler.
  */
 static void button_handler(struct k_work *work)
 {
@@ -118,12 +116,12 @@ static void button_handler(struct k_work *work)
 }
 
 /**
- * button_isr: Interrupt Service Routine (ISR) for the button. It is triggered on both rising and falling edges of the button signal.
- * The ISR schedules a debounce handler to run after a short delay (15ms) to filter out mechanical bounce and determine the actual button state (pressed or released).
- * The debounce handler queues short or long press events for the LED thread.
- * @param port: Pointer to the GPIO device structure for the button's port.
- * @param cb: Pointer to the GPIO callback structure associated with this ISR.  
- * @param pins: Bitmask of the pins that triggered the interrupt (not used in this implementation).
+ * button_isr: Interrupt Service Routine for the button GPIO. 
+ * It is triggered on both rising and falling edges of the button signal.
+ * This function submits the button work to the system work queue for processing.
+ * @param port: Pointer to the GPIO device structure.
+ * @param cb: Pointer to the GPIO callback structure.
+ * @param pins: The pin mask indicating which pins triggered the interrupt.
  */
 static void button_isr(const struct device *port,
                        struct gpio_callback *cb,
@@ -138,8 +136,9 @@ static void button_isr(const struct device *port,
 }
 
 /**
- * button_init: Initializes the button, callback and delayed work.
- * Returns 0 on success, or a negative error code on failure.
+ * button_init: Initializes the button GPIO, configures the interrupt, 
+ * and sets up the work queue for handling button events.
+ * Returns 0 on success or a negative error code on failure.
  */
 int button_init(void)
 {
@@ -167,9 +166,8 @@ int button_init(void)
 }
 
 /**
- * button_wait_event: Waits for a button event (short or long press) and returns the corresponding event type.
- * Returns BUTTON_NONE if no event is received within the supplied timeout.
- * @param timeout: The maximum time to wait for a button event. If the timeout expires before an event occurs, it returns BUTTON_NONE.
+ * button_wait_event: Waits for a button event to be queued.  
+ * @param timeout: The maximum time to wait for an event.
  */
 enum button_event button_wait_event(k_timeout_t timeout)
 {
